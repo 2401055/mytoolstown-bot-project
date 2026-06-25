@@ -30,32 +30,46 @@ class MyToolsTownBot:
 
     async def init_browser(self):
         try:
+            logging.info("Initializing playwright...")
             if not self.playwright:
                 self.playwright = await async_playwright().start()
             
             if not self.browser:
-                self.browser = await self.playwright.chromium.launch(headless=True)
-                self.context = await self.browser.new_context()
+                logging.info("Launching chromium...")
+                # إضافة args لتحسين التوافق مع بيئات Docker
+                self.browser = await self.playwright.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                )
+                self.context = await self.browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                )
                 self.page = await self.context.new_page()
                 
-                # الدخول للموقع وإعداد القناة
-                await self.page.goto(BASE_URL)
+                logging.info(f"Navigating to {BASE_URL}")
+                await self.page.goto(BASE_URL, wait_until="networkidle", timeout=60000)
+                
+                logging.info(f"Filling channel ID: {CHANNEL_ID}")
                 await self.page.fill('#username', CHANNEL_ID)
                 await self.page.click('#searchbtn')
-                await self.page.wait_for_url('**/youtube/dashboard')
                 
-                # الذهاب لصفحة كسب النقاط وتفعيل التحقق التلقائي
-                await self.page.goto('https://mytoolstown.com/youtube/earn')
-                # تفعيل خيار التحقق التلقائي إذا لم يكن مفعلاً
+                logging.info("Waiting for dashboard...")
+                await self.page.wait_for_url('**/youtube/dashboard', timeout=60000)
+                
+                logging.info("Navigating to earn page...")
+                await self.page.goto('https://mytoolstown.com/youtube/earn', wait_until="networkidle", timeout=60000)
+                
+                logging.info("Checking auto-verify checkbox...")
                 checkbox = await self.page.query_selector('input[type="checkbox"]')
                 if checkbox:
                     is_checked = await checkbox.is_checked()
                     if not is_checked:
                         await self.page.click('label:has-text("Automatically verify")')
+                logging.info("Browser initialization complete.")
         except Exception as e:
-            logging.error(f"Error initializing browser: {e}")
-            # إعادة التصفير للمحاولة مرة أخرى
+            logging.error(f"Error initializing browser: {str(e)}")
             self.browser = None
+            self.playwright = None
             raise e
 
     async def ensure_initialized(self):
@@ -63,24 +77,31 @@ class MyToolsTownBot:
             await self.init_browser()
 
     async def get_task(self):
+        logging.info("Starting get_task...")
         await self.ensure_initialized()
-        await self.page.reload()
+        logging.info("Reloading earn page...")
+        await self.page.reload(wait_until="networkidle")
+        
         # البحث عن زر الاشتراك أو الإعجاب
-        earn_btn = await self.page.query_selector('#earnBtn')
+        earn_btn = await self.page.wait_for_selector('#earnBtn', timeout=10000)
         if not earn_btn:
-            # محاولة العودة لصفحة الكسب إذا تهنا
-            await self.page.goto('https://mytoolstown.com/youtube/earn')
-            earn_btn = await self.page.query_selector('#earnBtn')
+            logging.warning("earnBtn not found, retrying navigation...")
+            await self.page.goto('https://mytoolstown.com/youtube/earn', wait_until="networkidle")
+            earn_btn = await self.page.wait_for_selector('#earnBtn', timeout=10000)
             if not earn_btn:
                 return None, "لا توجد مهام حالياً أو حدث خطأ في تحميل الصفحة."
         
         task_text = await self.page.inner_text('.card-body b')
+        logging.info(f"Task found: {task_text}")
         
         # استخراج الرابط بالضغط على الزر في نافذة جديدة
-        async with self.context.expect_page() as new_page_info:
+        logging.info("Clicking earnBtn...")
+        async with self.context.expect_page(timeout=30000) as new_page_info:
             await earn_btn.click()
         new_page = await new_page_info.value
+        await new_page.wait_for_load_state("networkidle")
         youtube_url = new_page.url
+        logging.info(f"YouTube URL: {youtube_url}")
         await new_page.close()
         
         return youtube_url, task_text
