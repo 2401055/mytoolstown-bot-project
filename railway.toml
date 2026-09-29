@@ -3,8 +3,6 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python mytoolstown_bot.py"
-healthcheckPath = "/"
-healthcheckTimeout = 100
+startCommand = "python main.py"
 restartPolicyType = "on-failure"
 restartPolicyMaxRetries = 10
