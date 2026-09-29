@@ -14,11 +14,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TOKEN = os.getenv("BOT_TOKEN", "").strip().strip('"').strip("'").strip()
-CHANNEL_ID = os.getenv("CHANNEL_ID", "UCFC9ZmSS4r3m_0BytjW4U3g").strip()
-BASE_URL = os.getenv(
-    "BASE_URL", "https://mytoolstown.com/youtube"
+TOKEN = os.getenv("BOT_TOKEN", os.getenv("TELEGRAM_BOT_TOKEN", "")).strip().strip('"').strip("'").strip()
+CHANNEL_ID = os.getenv(
+    "CHANNEL_ID", os.getenv("YOUTUBE_CHANNEL_ID", "UCFC9ZmSS4r3m_0BytjW4U3g")
 ).strip()
+# The channel is selected by submitting CHANNEL_ID to the site. Strip any old
+# referral query so a legacy Railway variable cannot point at another account.
+BASE_URL = os.getenv("BASE_URL", "https://mytoolstown.com/youtube").strip().split("?", 1)[0].rstrip("/")
 GIF_PATH = Path(os.getenv("SUCCESS_GIF", "assets/success.gif"))
 
 
